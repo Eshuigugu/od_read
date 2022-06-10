@@ -34,7 +34,7 @@ def download_url(url, sleep_time=1):
         r_content = response.content
         sleep(sleep_time)
         if not os.path.exists(os.path.split(os_join(filepath))[0]):
-            os.makedirs(os.path.split(os_join(filepath))[0])
+            os.makedirs(os_join(os.path.split(filepath)[0]), exist_ok=True)
         with open(os_join(filepath), 'wb') as f:
             f.write(r_content)
     return filepath
