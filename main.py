@@ -34,7 +34,7 @@ def download_url(url, sleep_time=1):
         r_content = response.content
         sleep(sleep_time)
         if not os.path.exists(os.path.split(os_join(filepath))[0]):
-            os.makedirs(os_join(os.path.split(filepath)[0]), exist_ok=True)
+            os.makedirs(os.path.split(os_join(filepath))[0])
         with open(os_join(filepath), 'wb') as f:
             f.write(r_content)
     return filepath
@@ -66,9 +66,9 @@ def download_epub(read_url, headers):
         for style_elem in style_elems:
             soup.html.insert(0, style_elem)
         filepath = filepath_from_url(url)
-        print(html)
+        print(filepath, html)
         if os.path.split(filepath)[0]:
-            os.makedirs(os.path.split(filepath)[0], exist_ok=True)
+            os.makedirs(os_join(os.path.split(filepath)[0]), exist_ok=True)
         with open(os_join(filepath), 'w', encoding='utf-8') as f:
             f.write(soup.prettify())
         xhtml_filepaths.append(filepath)
@@ -79,9 +79,9 @@ def download_epub(read_url, headers):
         html = open(os_join(xhtml_filepath), 'r', errors='ignore').read()
         soup = BeautifulSoup(html, features="lxml")
 
-        # download all stylesheets or whatever else has href
-        for elem in soup.find_all(href=True):
-            print(download_url(elem['href']))
+        # # download all stylesheets or whatever else has href
+        # for elem in soup.find_all(href=True):
+        #     print(download_url(elem['href']))
 
         for html_img in soup.find_all('image'):
             url = urllib.parse.urljoin(base_url, html_img['xlink:href'])
