@@ -60,7 +60,8 @@ def download_epub(read_url, headers):
         # see if it needs styling
         style_elems = soup.find_all('link', rel="stylesheet")
         for style_elem in style_elems:
-            style_elem['href'] = download_url(urllib.parse.urljoin(base_url, style_elem['href']))
+            # style_elem['href'] = \
+            download_url(urllib.parse.urljoin(base_url, style_elem['href']))
         html = base64.b64decode(re.search(match_xhtml_base64, html).group())
         soup = BeautifulSoup(html, features="lxml")
         for style_elem in style_elems:
