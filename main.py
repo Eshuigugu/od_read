@@ -74,7 +74,7 @@ def download_epub(read_url, headers):
             f.write(soup.prettify())
         xhtml_filepaths.append(filepath)
 
-
+    filepaths = []
     # download all imgs in html files
     for xhtml_filepath in xhtml_filepaths:
         html = open(os_join(xhtml_filepath), 'r', errors='ignore').read()
@@ -86,11 +86,17 @@ def download_epub(read_url, headers):
 
         for html_img in soup.find_all('image'):
             url = urllib.parse.urljoin(base_url, html_img['xlink:href'])
-            print(download_url(url))
+            filepaths.append(download_url(url))
 
         for html_img in soup.find_all('img'):
             url = urllib.parse.urljoin(base_url, html_img['src'])
-            print(download_url(url))
+            filepaths.append(download_url(url))
+
+    for css_file in [x for x in filepaths if x.endswith('.css')]:
+        with open(css_file, 'r') as f:
+            file_txt = f.read()
+            for url in re.findall('(?<=url\(")[^"]+', file_txt):
+                download_url(url)
 
     # get the required title.opf and META-INF/container.xml file that points to it
     root = ET.Element("package")
@@ -163,7 +169,5 @@ def download_epub(read_url, headers):
 
 if __name__ == '__main__':
     url = 'https://blah.read.overdrive.com/?d='
-    headers = {
-        'Cookie': '',
-            'User-Agent': ''}
+    headers = {'Cookie': ''}
     download_epub(url, headers=headers)
