@@ -69,7 +69,8 @@ def download_epub(read_url, headers):
         filepath = filepath_from_url(url)
         print(filepath, html)
         if os.path.split(filepath)[0]:
-            os.makedirs(os_join(os.path.split(filepath)[0]), exist_ok=True)
+            if not os.path.exists(os_join(os.path.split(filepath)[0])):
+                os.makedirs(os_join(os.path.split(filepath)[0]), exist_ok=True)
         with open(os_join(filepath), 'w', encoding='utf-8') as f:
             f.write(soup.prettify())
         xhtml_filepaths.append(filepath)
@@ -83,7 +84,8 @@ def download_epub(read_url, headers):
         # # download all stylesheets or whatever else has href
         # for elem in soup.find_all(href=True):
         #     print(download_url(elem['href']))
-
+        filepaths += [download_url(urllib.parse.urljoin(base_url, x['href']))
+                      for x in soup.find_all('link', rel="stylesheet")]
         for html_img in soup.find_all('image'):
             url = urllib.parse.urljoin(base_url, html_img['xlink:href'])
             filepaths.append(download_url(url))
@@ -92,11 +94,12 @@ def download_epub(read_url, headers):
             url = urllib.parse.urljoin(base_url, html_img['src'])
             filepaths.append(download_url(url))
 
-    for css_file in [x for x in filepaths if x.endswith('.css')]:
-        with open(css_file, 'r') as f:
+    for css_file in {x for x in filepaths if x.endswith('.css')}:
+        with open(os_join(css_file), 'r') as f:
             file_txt = f.read()
-            for url in re.findall('(?<=url\(")[^"]+', file_txt):
-                download_url(url)
+            for url in re.findall('(?<=url\\(")[^"]+', file_txt):
+                print(url)
+                download_url(urllib.parse.urljoin(base_url, url))
 
     # get the required title.opf and META-INF/container.xml file that points to it
     root = ET.Element("package")
@@ -123,6 +126,10 @@ def download_epub(read_url, headers):
 
 
     manifest = ET.Element("manifest")
+    #    <opf:item href="toc.ncx" id="ncx" media-type="application/x-dtbncx+xml"/>
+    mani_item = ET.Element("item")
+    mani_item.attrib = {'href': 'toc.ncx', "id": "ncx", "media-type": "application/x-dtbncx+xml"}
+    manifest.append(mani_item)
 
     spine = ET.Element("spine")
     # spine.attrib = {"toc": "ncx"}  # probably dont need this
@@ -155,6 +162,34 @@ def download_epub(read_url, headers):
       </rootfiles>
     </container>
     '''
+
+    toc = f'''<?xml version='1.0' encoding='UTF-8' standalone='no' ?>
+                <ncx version="2005-1" xmlns="http://www.daisy.org/z3986/2005/ncx/">
+                  <head>
+                    <meta name="dtb:depth" content="1" />
+                    <meta name="dtb:totalPageCount" content="0" />
+                    <meta name="dtb:maxPageNumber" content="0" />
+                  </head>
+                  <docTitle>
+                    <text>{title}</text>
+                  </docTitle>
+                  <docAuthor>
+                    <text>{creator}</text>
+                  </docAuthor>
+                  <navMap>'''
+    for i, chapter in enumerate(bData['nav']['toc']):
+        chapter_path = chapter['path']
+        chapter_name = chapter['title']
+        toc += f'''<navPoint id="navPoint-{i}" playOrder="{i}" class="chapter">
+                    <navLabel>
+                        <text>{chapter_name}</text>
+                      </navLabel>
+                      <content src="{chapter_path}" />
+                    </navPoint>'''
+    toc += '  </navMap>\n</ncx>'
+    with open(os_join('toc.ncx'), 'w', encoding='utf-8') as f:
+        f.write(toc)
+
     container_xml_filepath = os_join(os.path.join('META-INF', 'container.xml'))
     os.makedirs(os.path.split(container_xml_filepath)[0], exist_ok=True)
     with open(container_xml_filepath, 'w', encoding='utf-8') as f:
