@@ -40,6 +40,48 @@ def download_url(url, sleep_time=1):
     return filepath
 
 
+def toc_chapter_to_str(chapter, chapter_idx=1):
+    chapter_path = chapter['path']
+    chapter_name = chapter['title']
+    c_str= f'''
+    <navPoint id="navPoint-{chapter_idx}" playOrder="{chapter_idx}" class="chapter">
+      <navLabel>
+        <text>{chapter_name}</text>
+      </navLabel>
+      <content src="{chapter_path}" />'''
+    if "contents" in chapter:
+        for chapter_child in chapter["contents"]:
+            chapter_child_str, chapter_idx = toc_chapter_to_str(chapter_child, chapter_idx)
+            c_str += chapter_child_str
+    # {"".join([toc_chapter_to_str(x) for x in (chapter["contents"] if "contents" in chapter else [])])}
+    c_str += '''
+    </navPoint>'''
+    return c_str, chapter_idx+1
+
+
+def make_toc(title, creator, toc_list):
+    toc = f'''<?xml version='1.0' encoding='UTF-8' standalone='no' ?>
+                <ncx version="2005-1" xmlns="http://www.daisy.org/z3986/2005/ncx/">
+                  <head>
+                    <meta name="dtb:depth" content="1" />
+                    <meta name="dtb:totalPageCount" content="0" />
+                    <meta name="dtb:maxPageNumber" content="0" />
+                  </head>
+                  <docTitle>
+                    <text>{title}</text>
+                  </docTitle>
+                  <docAuthor>
+                    <text>{creator}</text>
+                  </docAuthor>
+                  <navMap>'''
+    i=1
+    for chapter in toc_list:
+        chapter, i = toc_chapter_to_str(chapter, i)
+        toc += chapter
+    toc += '  </navMap>\n</ncx>'
+    return toc
+
+
 def download_epub(read_url, headers):
     base_url = read_url
     r = sess.get(read_url, headers=headers)
@@ -163,32 +205,9 @@ def download_epub(read_url, headers):
     </container>
     '''
 
-    toc = f'''<?xml version='1.0' encoding='UTF-8' standalone='no' ?>
-                <ncx version="2005-1" xmlns="http://www.daisy.org/z3986/2005/ncx/">
-                  <head>
-                    <meta name="dtb:depth" content="1" />
-                    <meta name="dtb:totalPageCount" content="0" />
-                    <meta name="dtb:maxPageNumber" content="0" />
-                  </head>
-                  <docTitle>
-                    <text>{title}</text>
-                  </docTitle>
-                  <docAuthor>
-                    <text>{creator}</text>
-                  </docAuthor>
-                  <navMap>'''
-    for i, chapter in enumerate(bData['nav']['toc']):
-        chapter_path = chapter['path']
-        chapter_name = chapter['title']
-        toc += f'''<navPoint id="navPoint-{i}" playOrder="{i}" class="chapter">
-                    <navLabel>
-                        <text>{chapter_name}</text>
-                      </navLabel>
-                      <content src="{chapter_path}" />
-                    </navPoint>'''
-    toc += '  </navMap>\n</ncx>'
+
     with open(os_join('toc.ncx'), 'w', encoding='utf-8') as f:
-        f.write(toc)
+        f.write(make_toc(title, creator, bData['nav']['toc']))
 
     container_xml_filepath = os_join(os.path.join('META-INF', 'container.xml'))
     os.makedirs(os.path.split(container_xml_filepath)[0], exist_ok=True)
