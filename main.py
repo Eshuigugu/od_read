@@ -2,12 +2,13 @@ import os
 import re
 import urllib
 import requests
-from bs4 import BeautifulSoup
+from bs4 import BeautifulSoup, Tag
 import json
 from time import sleep
 import base64
 import xml.etree.ElementTree as ET
 import shutil
+from zipfile import ZipFile
 
 
 sess = requests.Session()
@@ -82,6 +83,10 @@ def make_toc(title, creator, toc_list):
     return toc
 
 
+def merge_url_paths(base_url, current_filepath, relative_url):
+    return urllib.parse.urljoin(urllib.parse.urljoin(base_url, current_filepath), relative_url)
+
+
 def download_epub(read_url, headers):
     base_url = read_url
     r = sess.get(read_url, headers=headers)
@@ -97,24 +102,28 @@ def download_epub(read_url, headers):
 
     xhtml_filepaths = []
     for url in xhtml_urls:
-        html = fetch_url(url).text
-        soup = BeautifulSoup(html, features="lxml")
-        # see if it needs styling
-        style_elems = soup.find_all('link', rel="stylesheet")
-        for style_elem in style_elems:
-            # style_elem['href'] = \
-            download_url(urllib.parse.urljoin(base_url, style_elem['href']))
-        html = base64.b64decode(re.search(match_xhtml_base64, html).group())
-        soup = BeautifulSoup(html, features="lxml")
-        for style_elem in style_elems:
-            soup.html.insert(0, style_elem)
         filepath = filepath_from_url(url)
-        print(filepath, html)
-        if os.path.split(filepath)[0]:
-            if not os.path.exists(os_join(os.path.split(filepath)[0])):
-                os.makedirs(os_join(os.path.split(filepath)[0]), exist_ok=True)
-        with open(os_join(filepath), 'w', encoding='utf-8') as f:
-            f.write(soup.prettify())
+        if not os.path.exists(os_join(filepath)):
+            html = fetch_url(url).text
+            soup = BeautifulSoup(html, features="lxml")
+            # see if it needs styling
+            style_elems = soup.find_all('link', rel="stylesheet")
+            for style_elem in style_elems:
+                style_elem['href'] = \
+                download_url(urllib.parse.urljoin(base_url, style_elem['href']))
+            html = base64.b64decode(re.search(match_xhtml_base64, html).group())
+            body_soup = BeautifulSoup(html, "html.parser")
+            # body_soup = Tag(soup, html.decode('utf-8'))
+            soup.find('body').replaceWith(body_soup)
+
+            # for style_elem in style_elems:
+            #     body_soup.html.insert(0, style_elem)
+            print(filepath, html)
+            if os.path.split(filepath)[0]:
+                if not os.path.exists(os_join(os.path.split(filepath)[0])):
+                    os.makedirs(os_join(os.path.split(filepath)[0]), exist_ok=True)
+            with open(os_join(filepath), 'w', encoding='utf-8') as f:
+                f.write(str(soup))
         xhtml_filepaths.append(filepath)
 
     filepaths = []
@@ -126,22 +135,25 @@ def download_epub(read_url, headers):
         # # download all stylesheets or whatever else has href
         # for elem in soup.find_all(href=True):
         #     print(download_url(elem['href']))
-        filepaths += [download_url(urllib.parse.urljoin(base_url, x['href']))
+        filepaths += [download_url(merge_url_paths(base_url, xhtml_filepath, x['href']))
                       for x in soup.find_all('link', rel="stylesheet")]
         for html_img in soup.find_all('image'):
-            url = urllib.parse.urljoin(base_url, html_img['xlink:href'])
+            url = merge_url_paths(base_url, xhtml_filepath, html_img['xlink:href'])
             filepaths.append(download_url(url))
 
         for html_img in soup.find_all('img'):
-            url = urllib.parse.urljoin(base_url, html_img['src'])
-            filepaths.append(download_url(url))
+            url = merge_url_paths(base_url, xhtml_filepath, html_img['src'])
+            print(html_img['src'], url)
+            try:filepaths.append(download_url(url))
+            except:
+                print('error downloading', url)
 
     for css_file in {x for x in filepaths if x.endswith('.css')}:
         with open(os_join(css_file), 'r') as f:
             file_txt = f.read()
-            for url in re.findall('(?<=url\\(")[^"]+', file_txt):
+            for url in re.findall('(?<=url\\()[^")]+', file_txt):
                 print(url)
-                download_url(urllib.parse.urljoin(base_url, url))
+                download_url(merge_url_paths(base_url, css_file, url.strip('"')))
 
     # get the required title.opf and META-INF/container.xml file that points to it
     root = ET.Element("package")
@@ -216,7 +228,14 @@ def download_epub(read_url, headers):
 
     if os.path.exists(f'{output_filedir}.epub'):
         os.remove(f'{output_filedir}.epub')
-    os.rename(shutil.make_archive(output_filedir, 'zip', output_filedir), f'{output_filedir}.epub')
+
+    with ZipFile(f'{output_filedir}.epub', 'w') as zip_f:
+        zip_f.writestr("mimetype", 'application/epub+zip')
+        for path, directories, files in os.walk(output_filedir):
+            for filename in files:
+                filepath = os.path.join(path, filename)
+                zip_f.write(filepath, arcname=os.path.join(*filepath.split(os.sep)[1:])) # zipping the file
+
     shutil.rmtree(output_filedir)
     return True
 
